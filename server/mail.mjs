@@ -1,0 +1,18 @@
+import {db,env} from './db.mjs';
+import {oauth,unseal} from './auth.mjs';
+import {MAILBOX} from './domain.mjs';
+export async function queue(c,b,recipients,subject,body){for(const recipient of new Set(recipients.filter(Boolean)))await c.query('INSERT INTO mail_queue(booking_id,recipient,subject,body) VALUES($1,$2,$3,$4)',[b?.id||null,recipient,subject,body]);}
+export async function sendQueued(){
+ const {rows:settings}=await db().pool.query("SELECT value FROM settings WHERE key='gmail_refresh'");if(!settings.length)return {sent:0,connected:false};
+ const client=oauth(env('URL')||'http://localhost:8888');client.setCredentials({refresh_token:unseal(settings[0].value)});const access=await client.getAccessToken();let sent=0;
+ // Claim up to five items atomically; a stale claim can be retried after ten minutes.
+ const {rows}=await db().pool.query("UPDATE mail_queue SET status='sending',attempts=attempts+1,next_attempt=now()+interval '10 minutes' WHERE id IN (SELECT id FROM mail_queue WHERE ((status IN ('queued','failed') AND attempts<8) OR status='sending') AND next_attempt<=now() ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 5) RETURNING *");
+ for(const item of rows){try{
+ const subject='=?UTF-8?B?'+Buffer.from(item.subject).toString('base64')+'?=';
+ const raw=Buffer.from([`From: CLAMS Bookings <${MAILBOX}>`,`To: ${item.recipient}`,`Reply-To: ${MAILBOX}`,`Subject: ${subject}`,`Message-ID: <clams-${item.id}@clams.booking.mun>`, 'MIME-Version: 1.0','Content-Type: text/plain; charset=UTF-8','Content-Transfer-Encoding: base64','',Buffer.from(item.body).toString('base64')].join('\r\n')).toString('base64url');
+ const r=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send',{method:'POST',headers:{Authorization:`Bearer ${access.token}`,'Content-Type':'application/json'},body:JSON.stringify({raw}),signal:AbortSignal.timeout(8000)});
+ if(!r.ok)throw new Error(`Gmail returned ${r.status}`);
+ await db().pool.query("UPDATE mail_queue SET status='sent',sent_at=now(),last_error=NULL WHERE id=$1",[item.id]);sent++;
+ }catch(e){await db().pool.query("UPDATE mail_queue SET status='failed',last_error=$2,next_attempt=now()+interval '15 minutes' WHERE id=$1",[item.id,String(e.message).slice(0,200)]);}}
+ return {sent,connected:true};
+}

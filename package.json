@@ -1,0 +1,22 @@
+{
+  "name": "clams-booking",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "build": "node --check public/app.js && node --check server/api.mjs && node --check server/mail.mjs",
+    "dev": "node server/dev.mjs"
+  },
+  "dependencies": {
+    "@netlify/database": "2.0.1",
+    "exceljs": "^4.4.0",
+    "google-auth-library": "^10.0.0"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.3.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
