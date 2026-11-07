@@ -1,3 +1,4 @@
+import {requestLink,redeemLink} from './email-auth.mjs';
 import {randomBytes} from 'node:crypto';
 import ExcelJS from 'exceljs';
 import {db,env,transaction} from './db.mjs';
@@ -30,6 +31,8 @@ export async function handle(req){try{
  const url=new URL(req.url),path=url.pathname.replace(/^\/api/,'')||'/',method=req.method;
  if(!['GET','POST'].includes(method))throw new HttpError(405,'Method not allowed.');
  if(method==='POST'&&req.headers.get('origin')!==url.origin)throw new HttpError(403,'This request must come from the booking website.');
+ if(path==='/auth/email/request'&&method==='POST')return await requestLink(req,await body(req));
+ if(path==='/auth/email/redeem'&&method==='POST')return await redeemLink(req,await body(req));
  if(path==='/auth/start')return await beginAuth(req,url.searchParams.get('mode')==='gmail'?'gmail':'login');
  if(path==='/auth/callback')return await finishAuth(req);
  if(path==='/config')return json({mailbox:MAILBOX,rate:RATE,outcomes:OUTCOMES,authConfigured:!!(env('GOOGLE_CLIENT_ID')&&env('GOOGLE_CLIENT_SECRET')&&env('SESSION_SECRET'))});

@@ -7,7 +7,7 @@ Whole-system CLAMS booking for the Nutrition & Lifestyle Lab, Memorial Universit
 - Public calendar: confirmed reservations, PI name and primary contact email only.
 - Whole-week reservations at CAD $300/week; end date is the release date.
 - Research, affiliation, FOAPAL and per-user training information captured privately.
-- Google-verified sign-in, owner-only booking records, administrator role allowlist.
+- Email-link sign-in, owner-only booking records, administrator role allowlist. Google sign-in is reserved for administrator mailbox setup.
 - Approval, request-more-information, decline, changes, cancellation and maintenance.
 - Training verification and documented supervised-use override.
 - Primary contact independent of PI; select an equipment user or enter another person.
@@ -19,7 +19,7 @@ Whole-system CLAMS booking for the Nutrition & Lifestyle Lab, Memorial Universit
 
 ## Current status (2026-11-05)
 
-Application implemented and locally tested. Netlify project created, but no source deployment yet.
+Application deployed on Netlify. Google/Gmail authorization and end-to-end live email delivery still require verification.
 
 Netlify project: `mun-clams-booking`
 Netlify site ID: `736df73f-e9c4-444c-aab0-136b90ff12e3`
@@ -47,7 +47,7 @@ The local preview uses an in-memory PostgreSQL-compatible database. Its Sign in 
 
 ## GitHub and Netlify deployment
 
-1. Create a separate private repository, e.g. `svharding/CLAMS-booking`.
+1. Source repository: `svharding/CLAMS`.
 2. Upload this directory, excluding `node_modules`, `.env`, and `.netlify`.
 3. Connect the existing Netlify project above to that repository. Build: `npm run build`; publish: `public`; functions: `netlify/functions`.
 4. Netlify Database provisions through `@netlify/database`; committed migrations in `netlify/database/migrations` create the schema on deployment. It requires a compatible credit-based plan. Confirm availability before launch; do not switch to browser-only persistence.
@@ -63,7 +63,9 @@ Create a Google Cloud project controlled by the booking-account owner. Enable th
 
 Scopes: `openid`, `email`, `profile`; the separate administrator-only Connect Gmail flow additionally requests `https://www.googleapis.com/auth/gmail.send`.
 
-For sign-in, users need a verified Google account (a university email can be linked to a Google account). For administration, the default allowlist contains only the dedicated booking mailbox; add Scott's Google-associated email to `ADMIN_EMAILS` if desired.
+Users sign in through a one-time link sent to their email, including @mun.ca; no Google account is required. Links expire after 15 minutes and require the same browser that requested them. An explicit confirmation POST prevents passive email scanners from consuming links. Only token hashes are stored, and login emails are sent immediately rather than through the booking queue. Limits: five links per address per hour, ten per browser per hour, and fifty total per hour. Existing users and training records are preserved.
+
+Before email-link sign-in can work, an allowlisted administrator uses the Administrator Google sign-in option, then Administration → Connect Gmail. Google sign-in is restricted to administrator addresses. The default administrator is the booking mailbox. Keep the Google OAuth client variables: they are still needed for mailbox authorization.
 
 Set these in Netlify's environment variables, with Functions scope:
 

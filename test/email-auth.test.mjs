@@ -1,0 +1,33 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {PGlite} from '@electric-sql/pglite';
+import {useDatabase} from '../server/db.mjs';
+import {requestLink,redeemLink} from '../server/email-auth.mjs';
+import {hash,user} from '../server/auth.mjs';
+test('email links preserve identities, enforce expiry, browser binding, replay protection and limits',async()=>{
+ const pg=new PGlite();useDatabase({pool:{query:(s,p)=>pg.query(s,p),connect:async()=>({query:(s,p)=>pg.query(s,p),release(){}})}});
+ process.env.SESSION_SECRET='test-only-secret-of-at-least-32-characters';
+ for(const f of ['001_initial.sql','002_email_signin.sql'])await pg.exec(await readFile(new URL('../netlify/database/migrations/'+f,import.meta.url),'utf8'));
+ const req=(cookie='')=>new Request('https://clams.test/api/auth/email/request',{headers:{cookie}});
+ await assert.rejects(requestLink(req(),{email:'student@mun.ca'},()=>{}),/awaiting mailbox/);
+ await pg.query("INSERT INTO settings VALUES('gmail_refresh','test-only')");
+ let link;const response=await requestLink(req(),{email:'student@mun.ca'},async(e,l)=>{assert.equal(e,'student@mun.ca');link=l;});
+ const browser=response.headers.get('set-cookie').split(';')[0];const token=link.split('token=')[1];
+ assert.equal((await pg.query('SELECT hash FROM login_links')).rows[0].hash,hash(token));
+ assert.equal((await pg.query('SELECT * FROM mail_queue')).rows.length,0);
+ await assert.rejects(redeemLink(req(),{token}),/same browser/);
+ // Opening/scanning the URL does not consume the link: redemption is an explicit POST in the API.
+ const result=await redeemLink(req(browser),{token});
+ assert.equal((await user(req(result.headers.get('set-cookie').split(';')[0]))).email,'student@mun.ca');
+ await assert.rejects(redeemLink(req(browser),{token}),/already used/);
+ await requestLink(req(browser),{email:'student@mun.ca'},async(e,l)=>{link=l;});
+ const expired=link.split('token=')[1];await pg.query("UPDATE login_links SET expires_at=now()-interval '1 minute' WHERE hash=$1",[hash(expired)]);
+ await assert.rejects(redeemLink(req(browser),{token:expired}),/expired/);
+ let sends=0;for(let i=0;i<6;i++)await requestLink(req(browser),{email:'student@mun.ca'},async()=>sends++);
+ assert.equal(sends,3);
+ await assert.rejects(requestLink(req(),{email:'bad\r\nBcc: test@example.com'},()=>{}));
+ await assert.rejects(requestLink(req(),{email:'failure@mun.ca'},()=>{throw Error('test');}),/could not be sent/);
+ assert.ok((await pg.query("SELECT used_at FROM login_links WHERE email='failure@mun.ca'")).rows[0].used_at);
+ await pg.close();
+});
