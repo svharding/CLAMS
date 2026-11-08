@@ -14,7 +14,7 @@ Whole-system CLAMS booking for the Nutrition & Lifestyle Lab, Memorial Universit
 - Excel workbook: bookings, registered users, participants, billing, activity.
 - Gmail OAuth send-only scope; encrypted refresh token stored in database.
 - Transactional mail queue; administrator and requester notices; individual notices to other active users on confirmation, rescheduling and cancellation.
-- Five-minute mail worker with retry status and manual retry.
+- Weekday 8 a.m. and 2 p.m. Newfoundland mail worker with retry status and manual retry.
 - Public calendar contains no FOAPAL, research title, funding or training data.
 
 ## Current status (2026-11-05)
@@ -88,7 +88,7 @@ An external Google OAuth app left in Testing has short-lived authorization, comm
 - All bookings retain their rate for reporting. Cancellation stops the reservation; financial adjustment is an administrator decision. Billing is tracking/export only, not payment collection.
 - User-group notices contain only PI, dates, contact and booking status. They are sent individually, without disclosing the mailing list.
 - Delivery is at-least-once. A crash after Gmail accepts a message but before the sent status saves can cause a duplicate on retry. Failed sends retry up to eight times; the admin dashboard shows failures.
-- Five messages are processed per five-minute scheduled invocation. For a large user list, notifications can take multiple runs. No immediate delivery promise is made.
+- Up to 50 messages are processed in concurrent batches of five per weekday 08:00/14:00 America/St_Johns check, with a 15-second batch-start budget and 8-second send timeouts. Remaining messages wait for the next check or manual Send/retry. Weekend mail waits until Monday. Sign-in links remain immediate. UTC cron covers both DST offsets; a local-time guard skips alternate slots before importing database code.
 - Maintenance is blocked in whole-week units in this version and carries no charge.
 - Returning users can view their requests. Pre-filling past study details and automatic reminder emails are not implemented.
 - No backups are configured by this repository; configure provider backup/recovery and retention appropriate for the lab before entering production records.
@@ -98,3 +98,7 @@ An external Google OAuth app left in Testing has short-lived authorization, comm
 `npm test` exercises real SQL against isolated PGlite PostgreSQL: role checks, private record ownership, training gate/override, fee and date rules, pending-to-confirmed behavior, conflicting and adjacent bookings, maintenance collisions, billing and XLSX generation, public field minimization, mail recipient content, cancellation, CSRF origin rejection, OAuth state tampering and token encryption.
 
 Live Google OAuth, Gmail delivery, Netlify deployment and database provisioning require account setup and remain unverified until those steps are completed. The concurrent-lock strategy is implemented but not load-tested against hosted PostgreSQL.
+
+## Credit monitoring
+
+Scheduled mail checks log only counts, elapsed milliseconds and failure state, never recipient addresses or message content. Compare Netlify billing compute (database versus functions where available), production deploys, requests and bandwidth daily. Logs are operational evidence, not billed-credit measurements. Do not poll app APIs for monitoring: that wakes the database. Before change, the user reported 262.5 compute, 60 deployment and 1.1 traffic/bandwidth credits for the previous team billing cycle; a new-cycle baseline must be read from Netlify billing.
